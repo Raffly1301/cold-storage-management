@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Cold Storage BSI DP</string>
+    <string name="title_activity_main">Cold Storage BSI DP</string>
+    <string name="package_name">com.csbsidp.app</string>
+    <string name="custom_url_scheme">com.csbsidp.app</string>
+</resources>

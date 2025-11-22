@@ -1,0 +1,5 @@
+{
+  "name": "Cold Storage Management",
+  "description": "A web application to manage cold storage inventory. It allows users to track stock, record goods entering and leaving, shift pallets, and view comprehensive reports on inventory movements and ending stock.",
+  "requestFramePermissions": []
+}
