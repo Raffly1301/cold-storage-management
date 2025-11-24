@@ -75,9 +75,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin, error: authError }) => {
             Login
           </button>
         </form>
-        <div className="text-center mt-4">
-           <p className="text-xs text-gray-400">Default Admin: admin / admin123</p>
-        </div>
       </div>
     </div>
   );

@@ -228,14 +228,14 @@ export const GoodsInForm: React.FC<GoodsInFormProps> = ({ onAddStock, onClose, c
                         <p className="text-xs text-gray-400 mt-1">Optional (Base for Expiry)</p>
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Expiry Date</label>
-                        <div className="flex flex-wrap gap-2 mb-2">
+                        <label className="block text-sm font-medium text-gray-700">Expiry Date</label>
+                        <input type="date" value={item.expiryDate} onChange={(e) => handleItemChange(index, 'expiryDate', e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm" />
+                         <div className="flex flex-wrap gap-2 mt-2">
                              <ExpiryPresetButton label="+6 Mo" months={6} index={index} />
                              <ExpiryPresetButton label="+1 Yr" months={12} index={index} />
                              <ExpiryPresetButton label="+1.5 Yr" months={18} index={index} />
                              <ExpiryPresetButton label="+2 Yr" months={24} index={index} />
                         </div>
-                        <input type="date" value={item.expiryDate} onChange={(e) => handleItemChange(index, 'expiryDate', e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm" />
                     </div>
                 </div>
                 <div>

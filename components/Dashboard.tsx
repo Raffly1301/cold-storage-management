@@ -93,10 +93,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ stock, onOpenGoodsIn, onOp
                 {userRole !== 'VIEWER' && (
                     <div className="flex gap-2 w-full md:w-auto">
                         <button onClick={onOpenGoodsIn} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-green-500 text-white font-semibold py-2 px-4 rounded-full shadow-md hover:bg-green-600 transition duration-200">
-                            <ArrowDownIcon className="w-5 h-5" /> Goods In
+                            <ArrowDownIcon className="w-5 h-5" /> In
                         </button>
                         <button onClick={onOpenGoodsOut} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-red-500 text-white font-semibold py-2 px-4 rounded-full shadow-md hover:bg-red-600 transition duration-200">
-                            <ArrowUpIcon className="w-5 h-5" /> Goods Out
+                            <ArrowUpIcon className="w-5 h-5" /> Out
                         </button>
                         <button onClick={onOpenPalletShift} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-blue-500 text-white font-semibold py-2 px-4 rounded-full shadow-md hover:bg-blue-600 transition duration-200">
                             <SwitchHorizontalIcon className="w-5 h-5" /> Shift Pallet

@@ -11,6 +11,7 @@ interface PalletShiftFormProps {
 }
 
 export const PalletShiftForm: React.FC<PalletShiftFormProps> = ({ onMoveStock, stock, onClose, currentUser }) => {
+  const [selectedLocation, setSelectedLocation] = useState('');
   const [selectedStockId, setSelectedStockId] = useState('');
   const [newLocation, setNewLocation] = useState('');
   const [pcsToMove, setPcsToMove] = useState('');
@@ -18,6 +19,15 @@ export const PalletShiftForm: React.FC<PalletShiftFormProps> = ({ onMoveStock, s
   const [error, setError] = useState('');
   
   const selectedStock = stock.find(s => s.id === selectedStockId);
+  
+  // Get list of unique locations that have items
+  // Fix: Explicitly cast to string[] to avoid 'unknown' type error in sort comparison
+  const occupiedLocations = (Array.from(new Set(stock.map(s => s.location))) as string[]).sort((a, b) => 
+    a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+  );
+
+  // Filter items based on selected location
+  const availableItems = stock.filter(s => s.location === selectedLocation);
 
   useEffect(() => {
     if (selectedStock) {
@@ -29,6 +39,10 @@ export const PalletShiftForm: React.FC<PalletShiftFormProps> = ({ onMoveStock, s
     }
   }, [selectedStockId, selectedStock]);
 
+  const handleLocationChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+      setSelectedLocation(e.target.value);
+      setSelectedStockId(''); // Reset item selection when location changes
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,6 +51,10 @@ export const PalletShiftForm: React.FC<PalletShiftFormProps> = ({ onMoveStock, s
     const pcsNum = parseInt(pcsToMove, 10);
     const kgsNum = parseFloat(kgsToMove);
 
+    if (!selectedLocation) {
+        setError('Please select a current location.');
+        return;
+    }
     if (!selectedStockId || !selectedStock) {
       setError('Please select an item to move.');
       return;
@@ -89,17 +107,38 @@ export const PalletShiftForm: React.FC<PalletShiftFormProps> = ({ onMoveStock, s
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {error && <p className="text-red-500 text-sm font-semibold">{error}</p>}
+      
+      {/* Step 1: Select From Location */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700">Current Location (From)</label>
+        <select value={selectedLocation} onChange={handleLocationChange} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm">
+            <option value="">Select a location...</option>
+            {occupiedLocations.map(loc => (
+                <option key={loc} value={loc}>{loc}</option>
+            ))}
+        </select>
+      </div>
+
+      {/* Step 2: Select Item from that Location */}
       <div>
         <label className="block text-sm font-medium text-gray-700">Item to Move</label>
-        <select value={selectedStockId} onChange={(e) => setSelectedStockId(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm">
-          <option value="">Select an item...</option>
-          {stock.map(item => (
+        <select 
+            value={selectedStockId} 
+            onChange={(e) => setSelectedStockId(e.target.value)} 
+            disabled={!selectedLocation}
+            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm disabled:bg-gray-100 disabled:text-gray-400"
+        >
+          <option value="">
+              {!selectedLocation ? 'Select a location first...' : 'Select an item...'}
+          </option>
+          {availableItems.map(item => (
             <option key={item.id} value={item.id}>
-              {item.itemCode} - {item.pcs} pcs / {item.kgs} kgs @ {item.location}
+              {item.itemCode} - {item.pcs} pcs / {item.kgs} kgs
             </option>
           ))}
         </select>
       </div>
+
       {selectedStock && (
         <div className="grid grid-cols-2 gap-4 p-3 bg-gray-50 rounded-md border">
             <div>
@@ -114,13 +153,16 @@ export const PalletShiftForm: React.FC<PalletShiftFormProps> = ({ onMoveStock, s
             </div>
         </div>
       )}
+
+      {/* Step 3: Select New Location */}
       <div>
-        <label className="block text-sm font-medium text-gray-700">New Location</label>
+        <label className="block text-sm font-medium text-gray-700">New Location (To)</label>
         <select value={newLocation} onChange={(e) => setNewLocation(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm">
           <option value="">Select a new location...</option>
           {STORAGE_LOCATIONS.map(loc => <option key={loc} value={loc}>{loc}</option>)}
         </select>
       </div>
+      
       <div className="flex justify-end pt-2">
         <button type="submit" className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
           Move Pallet
