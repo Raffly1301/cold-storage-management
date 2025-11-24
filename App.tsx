@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useLocalStorage } from './hooks/useLocalStorage';
-import { StockItem, Transaction, User } from './types';
+import { StockItem, Transaction, User, PendingRequest, TransactionType } from './types';
 import { Dashboard } from './components/Dashboard';
 import { ReportView } from './components/ReportView';
 import { Modal } from './components/ui/Modal';
@@ -12,13 +12,14 @@ import { Login } from './components/Login';
 import { ExpiryReportView } from './components/ExpiryReportView';
 import { LocationView } from './components/LocationView';
 import { Sidebar } from './components/Sidebar';
-import { MenuIcon } from './components/ui/Icons';
+import { MenuIcon, LogoutIcon } from './components/ui/Icons';
 import { ItemCodeManager } from './components/ItemCodeManager';
+import { PendingRequests } from './components/PendingRequests';
 import { logTransactionToSheet } from './utils/googleSheetLogger';
 import { supabase } from './utils/supabaseClient';
 import { INITIAL_ITEM_CODES, INITIAL_USERS } from './utils/initialData';
 
-type View = 'DASHBOARD' | 'REPORTS' | 'EXPIRY_REPORT' | 'LOCATIONS' | 'SETTINGS';
+type View = 'DASHBOARD' | 'REPORTS' | 'EXPIRY_REPORT' | 'LOCATIONS' | 'SETTINGS' | 'PENDING_REQUESTS';
 type ModalType = 'GOODS_IN' | 'GOODS_OUT' | 'PALLET_SHIFT' | null;
 
 const App: React.FC = () => {
@@ -27,6 +28,7 @@ const App: React.FC = () => {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [itemCodes, setItemCodes] = useState<string[]>([]);
     const [users, setUsers] = useState<User[]>([]);
+    const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
     const [loading, setLoading] = useState(true);
     
     const [currentView, setCurrentView] = useState<View>('DASHBOARD');
@@ -56,6 +58,10 @@ const App: React.FC = () => {
 
                 const { data: txData } = await supabase.from('transactions').select('*');
                 if (txData) setTransactions(txData);
+                
+                // Fetch pending requests
+                const { data: pendingData } = await supabase.from('pending_requests').select('*');
+                if (pendingData) setPendingRequests(pendingData);
 
                 // Fetch Item Codes and Seed if empty
                 const { data: itemCodesData } = await supabase.from('item_codes').select('*');
@@ -123,6 +129,15 @@ const App: React.FC = () => {
                     return [...prev, newTx];
                 });
             })
+             .on('postgres_changes', { event: '*', schema: 'public', table: 'pending_requests' }, (payload) => {
+                if (payload.eventType === 'INSERT') {
+                    const newReq = payload.new as PendingRequest;
+                    setPendingRequests(prev => [...prev, newReq]);
+                } else if (payload.eventType === 'DELETE') {
+                    const deletedReq = payload.old as { id: string };
+                    setPendingRequests(prev => prev.filter(r => r.id !== deletedReq.id));
+                }
+            })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'item_codes' }, (payload) => {
                 if (payload.eventType === 'INSERT') {
                      const newCode = (payload.new as { code: string }).code;
@@ -188,7 +203,29 @@ const App: React.FC = () => {
     };
 
     const handleAddStock = async (newStocks: StockItem[], newTransactions: Transaction[]) => {
-        // Update Database
+        // APPROVAL FLOW: If User, send to pending_requests
+        if (currentUserRole === 'USER') {
+            const request: PendingRequest = {
+                id: `REQ-IN-${Date.now()}`,
+                type: 'IN',
+                data: newStocks,
+                requester: currentUser || 'unknown',
+                timestamp: new Date().toISOString(),
+                status: 'PENDING'
+            };
+            const { error } = await supabase.from('pending_requests').insert(request);
+            if (error) {
+                console.error("Error creating request", error);
+                alert("Failed to submit request.");
+            } else {
+                alert("Goods In request submitted for Admin approval.");
+                // Optimistic local update
+                setPendingRequests(prev => [...prev, request]);
+            }
+            return;
+        }
+
+        // ADMIN FLOW: Immediate update
         const { error: stockError } = await supabase.from('stock').insert(newStocks);
         if (stockError) {
             console.error('Error adding stock:', stockError);
@@ -199,7 +236,6 @@ const App: React.FC = () => {
         const { error: txError } = await supabase.from('transactions').insert(newTransactions);
         if (txError) console.error('Error saving transactions:', txError);
 
-        // Optimistic Local Update (Subscription will verify/deduplicate)
         setStock(prev => [...prev, ...newStocks]);
         setTransactions(prev => [...prev, ...newTransactions]);
         newTransactions.forEach(logTransactionToSheet);
@@ -209,6 +245,28 @@ const App: React.FC = () => {
         removalList: { stockId: string; pcs: number; kgs: number }[],
         newTransactions: Transaction[]
     ) => {
+        // APPROVAL FLOW: If User, send to pending_requests
+        if (currentUserRole === 'USER') {
+            const request: PendingRequest = {
+                id: `REQ-OUT-${Date.now()}`,
+                type: 'OUT',
+                data: removalList,
+                requester: currentUser || 'unknown',
+                timestamp: new Date().toISOString(),
+                status: 'PENDING'
+            };
+             const { error } = await supabase.from('pending_requests').insert(request);
+            if (error) {
+                console.error("Error creating request", error);
+                alert("Failed to submit request.");
+            } else {
+                alert("Goods Out request submitted for Admin approval.");
+                setPendingRequests(prev => [...prev, request]);
+            }
+            return;
+        }
+
+        // ADMIN FLOW: Immediate update
         // Update Database
         for (const detail of removalList) {
             const item = stock.find(s => s.id === detail.stockId);
@@ -248,6 +306,103 @@ const App: React.FC = () => {
         setTransactions(prev => [...prev, ...newTransactions]);
         newTransactions.forEach(logTransactionToSheet);
     };
+
+    const handleApproveRequest = async (request: PendingRequest, updatedData?: any) => {
+        const dataToUse = updatedData || request.data;
+
+        if (request.type === 'IN') {
+             // Create Transactions based on approved data
+             const newStocks = dataToUse as StockItem[];
+             const newTransactions: Transaction[] = newStocks.map((item: StockItem, idx: number) => ({
+                 id: `TRN-${Date.now()}-${idx}`,
+                 type: TransactionType.IN,
+                 item: item,
+                 timestamp: new Date().toISOString(),
+                 toLocation: item.location,
+                 username: request.requester // Attribute transaction to original requester
+             }));
+
+             const { error: stockError } = await supabase.from('stock').insert(newStocks);
+             if (stockError) {
+                 alert("Failed to process approval: " + stockError.message);
+                 return;
+             }
+             await supabase.from('transactions').insert(newTransactions);
+             setStock(prev => [...prev, ...newStocks]);
+             setTransactions(prev => [...prev, ...newTransactions]);
+             newTransactions.forEach(logTransactionToSheet);
+
+        } else if (request.type === 'OUT') {
+            const removalList = dataToUse as { stockId: string; pcs: number; kgs: number }[];
+            
+            // Check stock availability again before approving
+            for (const detail of removalList) {
+                const currentItem = stock.find(s => s.id === detail.stockId);
+                if (!currentItem || currentItem.pcs < detail.pcs || currentItem.kgs < detail.kgs) {
+                    alert(`Cannot approve. Stock for ${detail.stockId} is insufficient or missing.`);
+                    return;
+                }
+            }
+
+            const newTransactions: Transaction[] = removalList.map((detail, idx) => {
+                const stockItem = stock.find(s => s.id === detail.stockId)!;
+                return {
+                     id: `TRN-${Date.now()}-${idx}`,
+                     type: TransactionType.OUT,
+                     item: { ...stockItem, pcs: detail.pcs, kgs: detail.kgs }, // Snapshot of what left
+                     timestamp: new Date().toISOString(),
+                     fromLocation: stockItem.location,
+                     username: request.requester
+                };
+            });
+
+            // Perform updates
+            for (const detail of removalList) {
+                const item = stock.find(s => s.id === detail.stockId);
+                if (item) {
+                    const remainingPcs = item.pcs - detail.pcs;
+                    const remainingKgs = item.kgs - detail.kgs;
+                    if (remainingPcs > 0.0001 && remainingKgs > 0.0001) {
+                         await supabase.from('stock').update({ pcs: remainingPcs, kgs: remainingKgs }).eq('id', item.id);
+                    } else {
+                         await supabase.from('stock').delete().eq('id', item.id);
+                    }
+                }
+            }
+            await supabase.from('transactions').insert(newTransactions);
+            
+             // Optimistic Local Update (Duplicate logic from handleRemoveStock, could be refactored)
+            setStock(prevStock => {
+                return prevStock.reduce((acc, item) => {
+                    const removalDetail = removalList.find(d => d.stockId === item.id);
+                    if (removalDetail) {
+                        const remainingPcs = item.pcs - removalDetail.pcs;
+                        const remainingKgs = item.kgs - removalDetail.kgs;
+                        if (remainingPcs > 0.0001 && remainingKgs > 0.0001) {
+                            acc.push({ ...item, pcs: remainingPcs, kgs: remainingKgs });
+                        }
+                    } else {
+                        acc.push(item);
+                    }
+                    return acc;
+                }, [] as StockItem[]);
+            });
+            setTransactions(prev => [...prev, ...newTransactions]);
+            newTransactions.forEach(logTransactionToSheet);
+        }
+
+        // Delete request from pending table
+        await supabase.from('pending_requests').delete().eq('id', request.id);
+        setPendingRequests(prev => prev.filter(r => r.id !== request.id));
+    };
+
+    const handleRejectRequest = async (request: PendingRequest) => {
+        if(window.confirm("Are you sure you want to reject this request?")) {
+             await supabase.from('pending_requests').delete().eq('id', request.id);
+             setPendingRequests(prev => prev.filter(r => r.id !== request.id));
+        }
+    };
+
 
     const handleMoveStock = async (
         details: { stockId: string; newLocation: string; pcs: number; kgs: number },
@@ -307,7 +462,6 @@ const App: React.FC = () => {
     // Item Codes Handlers
     const handleAddItemCode = async (code: string) => {
         await supabase.from('item_codes').insert({ code });
-        // Optimistic
         setItemCodes(prev => {
              if (prev.includes(code)) return prev;
              return [...prev, code].sort();
@@ -316,14 +470,12 @@ const App: React.FC = () => {
 
     const handleDeleteItemCode = async (code: string) => {
         await supabase.from('item_codes').delete().eq('code', code);
-        // Optimistic
         setItemCodes(prev => prev.filter(c => c !== code));
     };
 
     // User Management Handlers
     const handleAddUser = async (user: User) => {
         await supabase.from('users').insert(user);
-        // Optimistic
         setUsers(prev => {
             if (prev.some(u => u.username === user.username)) return prev;
             return [...prev, user];
@@ -332,7 +484,6 @@ const App: React.FC = () => {
 
     const handleDeleteUser = async (username: string) => {
         await supabase.from('users').delete().eq('username', username);
-        // Optimistic
         setUsers(prev => prev.filter(u => u.username !== username));
     };
 
@@ -355,7 +506,8 @@ const App: React.FC = () => {
         LOCATIONS: 'Warehouse Locations',
         REPORTS: 'Reports',
         EXPIRY_REPORT: 'Expiry Report',
-        SETTINGS: 'Settings'
+        SETTINGS: 'Settings',
+        PENDING_REQUESTS: 'Pending Requests'
     };
 
     return (
@@ -368,6 +520,7 @@ const App: React.FC = () => {
                 currentUser={currentUser}
                 userRole={currentUserRole}
                 onLogout={handleLogout}
+                pendingCount={pendingRequests.length}
             />
             
             <div className="md:ml-64 flex flex-col h-screen">
@@ -376,7 +529,14 @@ const App: React.FC = () => {
                         <MenuIcon className="w-6 h-6" />
                     </button>
                     <h2 className="text-xl font-semibold text-gray-800">{viewTitles[currentView]}</h2>
-                    <div className="w-6 md:hidden"></div>
+                    
+                    {/* Explicit Logout for Mobile */}
+                    <button onClick={handleLogout} className="text-gray-600 hover:text-red-600 md:hidden">
+                        <LogoutIcon className="w-6 h-6" />
+                    </button>
+                    
+                    {/* Placeholder for Desktop spacing if needed, but not required if button is md:hidden */}
+                    <div className="w-6 hidden md:block"></div>
                 </header>
             
                 <main className="flex-grow overflow-y-auto p-4 sm:p-6 lg:p-8">
@@ -400,7 +560,15 @@ const App: React.FC = () => {
                             users={users}
                             onAddUser={handleAddUser}
                             onDeleteUser={handleDeleteUser}
-                            currentUser={currentUser}
+                            currentUser={currentUser || ''}
+                        />
+                    )}
+                    {currentView === 'PENDING_REQUESTS' && (
+                        <PendingRequests 
+                            requests={pendingRequests} 
+                            stock={stock}
+                            onApprove={handleApproveRequest}
+                            onReject={handleRejectRequest}
                         />
                     )}
                 </main>
@@ -411,8 +579,9 @@ const App: React.FC = () => {
                 <GoodsInForm 
                     onAddStock={handleAddStock}
                     onClose={() => setActiveModal(null)}
-                    currentUser={currentUser}
+                    currentUser={currentUser || ''}
                     itemCodes={itemCodes}
+                    userRole={currentUserRole}
                 />
             </Modal>
             <Modal isOpen={activeModal === 'GOODS_OUT'} onClose={() => setActiveModal(null)} title="Goods Out">
@@ -420,7 +589,8 @@ const App: React.FC = () => {
                     onRemoveStock={handleRemoveStock}
                     stock={stock}
                     onClose={() => setActiveModal(null)}
-                    currentUser={currentUser}
+                    currentUser={currentUser || ''}
+                    userRole={currentUserRole}
                 />
             </Modal>
              <Modal isOpen={activeModal === 'PALLET_SHIFT'} onClose={() => setActiveModal(null)} title="Shift Pallet">
@@ -428,7 +598,7 @@ const App: React.FC = () => {
                     onMoveStock={handleMoveStock}
                     stock={stock}
                     onClose={() => setActiveModal(null)}
-                    currentUser={currentUser}
+                    currentUser={currentUser || ''}
                 />
             </Modal>
              <Modal isOpen={!!selectedLocation} onClose={() => setSelectedLocation(null)} title={`Items in Location: ${selectedLocation}`}>

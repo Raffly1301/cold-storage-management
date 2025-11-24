@@ -20,6 +20,7 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
   - expiryDate (text/date)
   - location (text)
   - entryDate (text/timestamptz)
+  - productionDate (text/date)
 
   Table: transactions
   - id (text, primary key)
@@ -37,4 +38,12 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
 
   Table: item_codes
   - code (text, primary key)
+
+  Table: pending_requests
+  - id (text, primary key)
+  - type (text) 'IN' or 'OUT'
+  - data (jsonb)
+  - requester (text)
+  - timestamp (text/timestamptz)
+  - status (text) default 'PENDING'
 */

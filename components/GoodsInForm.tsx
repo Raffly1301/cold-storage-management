@@ -9,6 +9,7 @@ interface GoodsInFormProps {
   onClose: () => void;
   currentUser: string;
   itemCodes: string[];
+  userRole: 'ADMIN' | 'USER' | 'VIEWER';
 }
 
 interface FormItem {
@@ -22,7 +23,7 @@ interface FormItem {
   error?: string;
 }
 
-export const GoodsInForm: React.FC<GoodsInFormProps> = ({ onAddStock, onClose, currentUser, itemCodes }) => {
+export const GoodsInForm: React.FC<GoodsInFormProps> = ({ onAddStock, onClose, currentUser, itemCodes, userRole }) => {
   const [items, setItems] = useState<FormItem[]>([{
     id: Date.now(),
     itemCode: '',
@@ -257,8 +258,8 @@ export const GoodsInForm: React.FC<GoodsInFormProps> = ({ onAddStock, onClose, c
       )}
 
       <div className="flex justify-end pt-2">
-        <button type="submit" className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
-          Add {items.length} {items.length > 1 ? 'Items' : 'Item'} to Stock
+        <button type="submit" className={`inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white focus:outline-none focus:ring-2 focus:ring-offset-2 ${userRole === 'USER' ? 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500' : 'bg-red-600 hover:bg-red-700 focus:ring-red-500'}`}>
+           {userRole === 'USER' ? 'Submit Request for Approval' : `Add ${items.length} ${items.length > 1 ? 'Items' : 'Item'} to Stock`}
         </button>
       </div>
     </form>

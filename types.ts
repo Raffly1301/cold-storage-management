@@ -31,3 +31,12 @@ export interface User {
   password?: string;
   role: 'ADMIN' | 'USER' | 'VIEWER';
 }
+
+export interface PendingRequest {
+  id: string;
+  type: 'IN' | 'OUT';
+  data: any; // Stores StockItem[] for IN, or { stockId, pcs, kgs }[] for OUT
+  requester: string;
+  timestamp: string;
+  status: 'PENDING';
+}
