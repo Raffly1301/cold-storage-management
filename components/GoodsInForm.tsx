@@ -156,6 +156,7 @@ export const GoodsInForm: React.FC<GoodsInFormProps> = ({ onAddStock, onClose, c
             expiryDate: item.expiryDate,
             location: item.location,
             entryDate: timestamp,
+            status: 'AVAILABLE',
         };
         newStockItems.push(newStockItem);
 

@@ -21,6 +21,8 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
   - location (text)
   - entryDate (text/timestamptz)
   - productionDate (text/date)
+  - status (text) 'AVAILABLE' or 'HOLD'
+  - holdReason (text)
 
   Table: transactions
   - id (text, primary key)
@@ -30,6 +32,7 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
   - fromLocation (text, nullable)
   - toLocation (text, nullable)
   - username (text)
+  - notes (text, nullable)
 
   Table: users
   - username (text, primary key)

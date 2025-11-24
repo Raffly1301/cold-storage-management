@@ -79,20 +79,26 @@ export const GoodsOutForm: React.FC<GoodsOutFormProps> = ({ onRemoveStock, stock
             newItem.error = 'Please select a stock item.';
             isValid = false;
         } else {
-            const pcsNum = parseInt(item.pcs, 10);
-            const kgsNum = parseFloat(item.kgs);
-            if (isNaN(pcsNum) || pcsNum <= 0) {
-                newItem.error = 'PCS must be a positive number.';
-                isValid = false;
-            } else if (isNaN(kgsNum) || kgsNum <= 0) {
-                newItem.error = 'KGS must be a positive number.';
-                isValid = false;
-            } else if (pcsNum > selectedStock.pcs) {
-                newItem.error = `Cannot take out more than the available ${selectedStock.pcs} PCS.`;
-                isValid = false;
-            } else if (kgsNum > selectedStock.kgs) {
-                newItem.error = `Cannot take out more than the available ${selectedStock.kgs} KGS.`;
-                isValid = false;
+            // Re-validate hold status in case it changed while form was open
+            if (selectedStock.status === 'HOLD') {
+                 newItem.error = 'This item is on QC HOLD and cannot be moved out.';
+                 isValid = false;
+            } else {
+                const pcsNum = parseInt(item.pcs, 10);
+                const kgsNum = parseFloat(item.kgs);
+                if (isNaN(pcsNum) || pcsNum <= 0) {
+                    newItem.error = 'PCS must be a positive number.';
+                    isValid = false;
+                } else if (isNaN(kgsNum) || kgsNum <= 0) {
+                    newItem.error = 'KGS must be a positive number.';
+                    isValid = false;
+                } else if (pcsNum > selectedStock.pcs) {
+                    newItem.error = `Cannot take out more than the available ${selectedStock.pcs} PCS.`;
+                    isValid = false;
+                } else if (kgsNum > selectedStock.kgs) {
+                    newItem.error = `Cannot take out more than the available ${selectedStock.kgs} KGS.`;
+                    isValid = false;
+                }
             }
         }
         return newItem;
@@ -172,11 +178,20 @@ export const GoodsOutForm: React.FC<GoodsOutFormProps> = ({ onRemoveStock, stock
                 <select value={item.stockId} onChange={(e) => handleItemChange(index, 'stockId', e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm">
                   <option value="">Select an item...</option>
                   {availableStock.map(stockItem => (
-                    <option key={stockItem.id} value={stockItem.id}>
-                      {stockItem.itemCode} - {stockItem.pcs} pcs @ {stockItem.location} (Exp: {new Date(stockItem.expiryDate).toLocaleDateString()})
+                    <option 
+                        key={stockItem.id} 
+                        value={stockItem.id}
+                        disabled={stockItem.status === 'HOLD'}
+                        className={stockItem.status === 'HOLD' ? 'text-gray-400 bg-gray-100' : ''}
+                    >
+                      {stockItem.itemCode} - {stockItem.pcs} pcs @ {stockItem.location} 
+                      {stockItem.status === 'HOLD' ? ' (ON QC HOLD)' : ` (Exp: ${new Date(stockItem.expiryDate).toLocaleDateString()})`}
                     </option>
                   ))}
                 </select>
+                {selectedStockInRow?.status === 'HOLD' && (
+                     <p className="text-xs text-red-500 mt-1">This item is currently on QC Hold and cannot be removed.</p>
+                )}
               </div>
 
               {selectedStockInRow && (

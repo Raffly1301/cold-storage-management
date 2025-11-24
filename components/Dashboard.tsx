@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { StockItem } from '../types';
-import { ArrowDownIcon, ArrowUpIcon, SwitchHorizontalIcon } from './ui/Icons';
+import { ArrowDownIcon, ArrowUpIcon, SwitchHorizontalIcon, LockClosedIcon, LockOpenIcon } from './ui/Icons';
 
 interface DashboardProps {
     stock: StockItem[];
@@ -9,9 +9,10 @@ interface DashboardProps {
     onOpenGoodsOut: () => void;
     onOpenPalletShift: () => void;
     userRole: 'ADMIN' | 'USER' | 'VIEWER';
+    onToggleHold: (stockId: string, currentStatus: 'AVAILABLE' | 'HOLD') => void;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ stock, onOpenGoodsIn, onOpenGoodsOut, onOpenPalletShift, userRole }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ stock, onOpenGoodsIn, onOpenGoodsOut, onOpenPalletShift, userRole, onToggleHold }) => {
     const [searchTerm, setSearchTerm] = useState('');
     
     const filteredStock = stock.filter(item => 
@@ -25,13 +26,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ stock, onOpenGoodsIn, onOp
         locationsUsed: stock.length,
     };
 
-    // A helper function to determine the styling for rows based on expiry date
-    const getExpiryStyling = (expiryDateString: string) => {
+    // A helper function to determine the styling for rows based on expiry date AND status
+    const getRowStyling = (item: StockItem) => {
+        if (item.status === 'HOLD') {
+             return {
+                rowClass: 'bg-orange-100 hover:bg-orange-200 transition-colors duration-200',
+                dateClass: 'text-gray-600',
+                statusText: 'QC HOLD'
+            };
+        }
+
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
         // Correctly parse YYYY-MM-DD to avoid timezone issues
-        const parts = expiryDateString.split('-');
+        const parts = item.expiryDate.split('-');
         const expiry = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
         
         const thirtyDaysFromNow = new Date();
@@ -41,18 +50,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ stock, onOpenGoodsIn, onOp
         if (expiry < today) {
             return {
                 rowClass: 'bg-red-100 hover:bg-red-200 transition-colors duration-200',
-                dateClass: 'text-red-700 font-bold'
+                dateClass: 'text-red-700 font-bold',
+                statusText: 'Expired'
             }; // Expired
         }
         if (expiry <= thirtyDaysFromNow) {
             return {
                 rowClass: 'bg-yellow-100 hover:bg-yellow-200 transition-colors duration-200',
-                dateClass: 'text-yellow-700 font-semibold'
+                dateClass: 'text-yellow-700 font-semibold',
+                statusText: 'Expiring Soon'
             }; // Expiring soon
         }
         return {
             rowClass: 'hover:bg-gray-50 transition-colors duration-200',
-            dateClass: 'text-gray-500'
+            dateClass: 'text-gray-500',
+            statusText: 'OK'
         }; // Default
     };
 
@@ -115,11 +127,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ stock, onOpenGoodsIn, onOp
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">KGS</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prod. Date</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expiry Date</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            {userRole !== 'VIEWER' && <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">QC / Action</th>}
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                         {filteredStock.length > 0 ? filteredStock.map(item => {
-                            const { rowClass, dateClass } = getExpiryStyling(item.expiryDate);
+                            const { rowClass, dateClass, statusText } = getRowStyling(item);
                             return (
                                 <tr key={item.id} className={rowClass}>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-600">{item.location}</td>
@@ -128,11 +142,41 @@ export const Dashboard: React.FC<DashboardProps> = ({ stock, onOpenGoodsIn, onOp
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.kgs.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.productionDate ? new Date(item.productionDate).toLocaleDateString() : '-'}</td>
                                     <td className={`px-6 py-4 whitespace-nowrap text-sm ${dateClass}`}>{new Date(item.expiryDate).toLocaleDateString()}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-600">
+                                        {item.status === 'HOLD' ? (
+                                            <span className="inline-flex items-center gap-1 text-orange-700">
+                                                <LockClosedIcon className="w-4 h-4" />
+                                                QC HOLD
+                                            </span>
+                                        ) : (
+                                            statusText === 'Expired' ? <span className="text-red-600">Expired</span> :
+                                            statusText === 'Expiring Soon' ? <span className="text-yellow-600">Expiring</span> :
+                                            <span className="text-green-600">OK</span>
+                                        )}
+                                        {item.holdReason && item.status === 'HOLD' && (
+                                            <p className="text-xs text-orange-600 italic mt-1 max-w-[150px] truncate" title={item.holdReason}>{item.holdReason}</p>
+                                        )}
+                                    </td>
+                                    {userRole !== 'VIEWER' && (
+                                        <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                                            <button 
+                                                onClick={() => onToggleHold(item.id, item.status || 'AVAILABLE')}
+                                                className={`p-2 rounded-full transition-colors ${
+                                                    item.status === 'HOLD' 
+                                                        ? 'bg-green-100 text-green-700 hover:bg-green-200' 
+                                                        : 'bg-orange-100 text-orange-700 hover:bg-orange-200'
+                                                }`}
+                                                title={item.status === 'HOLD' ? "Release Hold" : "Hold for QC"}
+                                            >
+                                                {item.status === 'HOLD' ? <LockOpenIcon className="w-5 h-5"/> : <LockClosedIcon className="w-5 h-5"/>}
+                                            </button>
+                                        </td>
+                                    )}
                                 </tr>
                             );
                         }) : (
                             <tr>
-                                <td colSpan={7} className="text-center py-10 text-gray-500">
+                                <td colSpan={userRole !== 'VIEWER' ? 8 : 7} className="text-center py-10 text-gray-500">
                                     No stock found. {userRole !== 'VIEWER' ? 'Use the "Goods In" button to add items.' : ''}
                                 </td>
                             </tr>

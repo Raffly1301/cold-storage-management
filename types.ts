@@ -8,12 +8,15 @@ export interface StockItem {
   expiryDate: string;
   location: string;
   entryDate: string;
+  status: 'AVAILABLE' | 'HOLD';
+  holdReason?: string;
 }
 
 export enum TransactionType {
   IN = 'IN',
   OUT = 'OUT',
   SHIFT = 'SHIFT',
+  STATUS_CHANGE = 'STATUS_CHANGE',
 }
 
 export interface Transaction {
@@ -24,6 +27,7 @@ export interface Transaction {
   fromLocation?: string;
   toLocation?: string;
   username: string;
+  notes?: string;
 }
 
 export interface User {

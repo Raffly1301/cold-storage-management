@@ -202,6 +202,50 @@ const App: React.FC = () => {
         setCurrentUser(null);
     };
 
+    const handleToggleHold = async (stockId: string, currentStatus: 'AVAILABLE' | 'HOLD') => {
+        const item = stock.find(s => s.id === stockId);
+        if (!item) return;
+
+        const newStatus = currentStatus === 'HOLD' ? 'AVAILABLE' : 'HOLD';
+        let reason = '';
+
+        if (newStatus === 'HOLD') {
+            const input = window.prompt("Reason for holding this item (QC issue, Damage, etc.):");
+            if (input === null) return; // Cancelled
+            reason = input.trim() || 'QC Hold (No reason provided)';
+        }
+
+        // Optimistic update
+        setStock(prev => prev.map(s => s.id === stockId ? { ...s, status: newStatus, holdReason: reason } : s));
+
+        // Update DB
+        const { error } = await supabase.from('stock')
+            .update({ status: newStatus, holdReason: reason })
+            .eq('id', stockId);
+
+        if (error) {
+            console.error('Error updating status:', error);
+            alert('Failed to update status.');
+            // Revert optimistic update
+            setStock(prev => prev.map(s => s.id === stockId ? item : s));
+            return;
+        }
+
+        // Log Transaction
+        const transaction: Transaction = {
+            id: `TRN-STATUS-${Date.now()}`,
+            type: TransactionType.STATUS_CHANGE,
+            item: { ...item, status: newStatus, holdReason: reason },
+            timestamp: new Date().toISOString(),
+            username: currentUser || 'unknown',
+            notes: `Changed status from ${currentStatus} to ${newStatus}. ${reason ? `Reason: ${reason}` : ''}`
+        };
+        
+        await supabase.from('transactions').insert(transaction);
+        setTransactions(prev => [...prev, transaction]);
+        logTransactionToSheet(transaction);
+    };
+
     const handleAddStock = async (newStocks: StockItem[], newTransactions: Transaction[]) => {
         // APPROVAL FLOW: If User, send to pending_requests
         if (currentUserRole === 'USER') {
@@ -547,6 +591,7 @@ const App: React.FC = () => {
                             onOpenGoodsOut={() => setActiveModal('GOODS_OUT')}
                             onOpenPalletShift={() => setActiveModal('PALLET_SHIFT')}
                             userRole={currentUserRole}
+                            onToggleHold={handleToggleHold}
                         />
                     )}
                     {currentView === 'REPORTS' && <ReportView stock={stock} transactions={transactions} />}
@@ -612,16 +657,20 @@ const App: React.FC = () => {
                                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">KGS</th>
                                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Prod. Date</th>
                                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Expiry</th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
                                 {itemsInSelectedLocation.map(item => (
-                                    <tr key={item.id}>
+                                    <tr key={item.id} className={item.status === 'HOLD' ? 'bg-orange-50' : ''}>
                                         <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{item.itemCode}</td>
                                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">{item.pcs.toLocaleString()}</td>
                                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">{item.kgs.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">{item.productionDate ? new Date(item.productionDate).toLocaleDateString() : '-'}</td>
                                         <td className="px-4 py-3 whitespace-nowrap text-sm text-red-600 font-semibold">{new Date(item.expiryDate).toLocaleDateString()}</td>
+                                        <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold">
+                                            {item.status === 'HOLD' ? <span className="text-orange-600">QC HOLD</span> : <span className="text-green-600">OK</span>}
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>

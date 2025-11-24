@@ -1,3 +1,4 @@
+
 import { Transaction, TransactionType } from '../types';
 
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwGU8Ol-_ZhUOe_NxlCXjnbRNy4aeGC48lG5Xf6lCjEomO_JuHbUybz8BADvDHxaTecNw/exec';
@@ -16,6 +17,8 @@ export const logTransactionToSheet = async (transaction: Transaction): Promise<v
             locationInfo = `From: ${transaction.fromLocation}`;
         } else if (transaction.type === TransactionType.SHIFT) {
             locationInfo = `From: ${transaction.fromLocation} -> To: ${transaction.toLocation}`;
+        } else if (transaction.type === TransactionType.STATUS_CHANGE) {
+            locationInfo = `Status Update (@${transaction.item.location})`;
         }
 
         const payload = {
@@ -26,6 +29,7 @@ export const logTransactionToSheet = async (transaction: Transaction): Promise<v
             locationInfo: locationInfo,
             user: transaction.username,
             timestamp: new Date(transaction.timestamp).toISOString(),
+            notes: transaction.notes || '', // Pass notes for status changes
         };
 
         const formData = new FormData();
